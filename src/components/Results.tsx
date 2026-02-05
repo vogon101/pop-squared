@@ -1,6 +1,7 @@
 "use client";
 
 import type { PopulationResult } from "@/lib/types";
+import Tooltip from "./Tooltip";
 
 interface ResultsProps {
   result: PopulationResult | null;
@@ -65,9 +66,11 @@ export default function Results({ result, loading, error, exponent }: ResultsPro
 
       <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-blue-600 font-medium">
-            Inverse-Distance Gravity (1/r<sup>{formatExp(exponent)}</sup>)
-          </p>
+          <Tooltip text="Weights population by proximity: each person contributes pop/r^n. Higher = more people live close by.">
+            <p className="text-xs uppercase tracking-wide text-blue-600 font-medium cursor-help border-b border-dashed border-blue-300">
+              Inverse-Distance Gravity (1/r<sup>{formatExp(exponent)}</sup>)
+            </p>
+          </Tooltip>
           <p className="text-xs text-blue-400 mt-1">
             Weights each person by 1/r<sup>{formatExp(exponent)}</sup> from the centre.
             {exponent >= 1.5
@@ -77,7 +80,9 @@ export default function Results({ result, loading, error, exponent }: ResultsPro
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <p className="text-xs text-blue-500 font-medium">Raw</p>
+            <Tooltip text="Sum of pop/r^n across all cells. Depends on radius choice.">
+              <p className="text-xs text-blue-500 font-medium cursor-help border-b border-dashed border-blue-300">Raw</p>
+            </Tooltip>
             <p className="text-lg font-semibold text-blue-900">
               {result.inverseSqSum.toLocaleString()}
             </p>
@@ -88,7 +93,9 @@ export default function Results({ result, loading, error, exponent }: ResultsPro
             </p>
           </div>
           <div>
-            <p className="text-xs text-blue-500 font-medium">Normalized</p>
+            <Tooltip text="Raw / sum of weights. A distance-weighted average, comparable across radii.">
+              <p className="text-xs text-blue-500 font-medium cursor-help border-b border-dashed border-blue-300">Normalized</p>
+            </Tooltip>
             <p className="text-lg font-semibold text-blue-900">
               {result.inverseSqNormalized.toLocaleString()}
             </p>

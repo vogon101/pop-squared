@@ -59,7 +59,129 @@ export interface RingFeatureProps {
   intensity: number;
 }
 
-export type ColorBy = "density" | "inverse-square";
+export type ColorBy = "population" | "density" | "inverse-square";
+
+export interface WedgeFeatureProps {
+  innerKm: number;
+  outerKm: number;
+  startAngle: number;
+  endAngle: number;
+  population: number;
+  inverseSqContribution: number;
+  intensity: number;
+}
+
+/**
+ * Generate a FeatureCollection of wedge polygons from wedge results.
+ * Each wedge is an arc sector between inner and outer radius.
+ */
+export function createWedges(
+  centerLng: number,
+  centerLat: number,
+  wedges: {
+    innerKm: number;
+    outerKm: number;
+    startAngle: number;
+    endAngle: number;
+    population: number;
+    density: number;
+    inverseSqContribution: number;
+    intensity: number;
+  }[],
+  colorBy: ColorBy = "inverse-square"
+): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  // Recompute intensity based on colorBy
+  const values = wedges.map((w) => {
+    if (colorBy === "density") return w.density;
+    if (colorBy === "population") return w.population;
+    return w.inverseSqContribution;
+  });
+  const maxVal = Math.max(...values, 1);
+  const STEPS_PER_WEDGE = 6; // arc segments per wedge
+
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = wedges.map((w, i) => {
+    const intensity = values[i] / maxVal;
+    const outerArc = arcCoords(centerLng, centerLat, w.outerKm, w.startAngle, w.endAngle, STEPS_PER_WEDGE);
+    const props: WedgeFeatureProps = {
+      innerKm: w.innerKm,
+      outerKm: w.outerKm,
+      startAngle: w.startAngle,
+      endAngle: w.endAngle,
+      population: w.population,
+      inverseSqContribution: w.inverseSqContribution,
+      intensity,
+    };
+
+    if (w.innerKm === 0) {
+      // Pie slice from center
+      const coords: [number, number][] = [
+        [centerLng, centerLat],
+        ...outerArc,
+        [centerLng, centerLat],
+      ];
+      return {
+        type: "Feature",
+        properties: props,
+        geometry: { type: "Polygon", coordinates: [coords] },
+      };
+    }
+
+    // Arc sector: outer arc forward, inner arc backward
+    const innerArc = arcCoords(centerLng, centerLat, w.innerKm, w.startAngle, w.endAngle, STEPS_PER_WEDGE).reverse();
+    const coords: [number, number][] = [
+      ...outerArc,
+      ...innerArc,
+      outerArc[0], // close
+    ];
+
+    return {
+      type: "Feature",
+      properties: props,
+      geometry: { type: "Polygon", coordinates: [coords] },
+    };
+  });
+
+  return { type: "FeatureCollection", features };
+}
+
+/**
+ * Generate arc coordinates from startAngle to endAngle (degrees, 0=north, clockwise)
+ * at a given radius from center.
+ */
+function arcCoords(
+  centerLng: number,
+  centerLat: number,
+  radiusKm: number,
+  startAngle: number,
+  endAngle: number,
+  steps: number
+): [number, number][] {
+  const coords: [number, number][] = [];
+  const latRad = (centerLat * Math.PI) / 180;
+  const lngRad = (centerLng * Math.PI) / 180;
+  const d = radiusKm / EARTH_RADIUS;
+
+  for (let i = 0; i <= steps; i++) {
+    // Bearing in degrees (0 = north, clockwise)
+    const bearingDeg = startAngle + (endAngle - startAngle) * (i / steps);
+    const bearingRad = (bearingDeg * Math.PI) / 180;
+
+    const lat2 = Math.asin(
+      Math.sin(latRad) * Math.cos(d) +
+        Math.cos(latRad) * Math.sin(d) * Math.cos(bearingRad)
+    );
+    const lng2 =
+      lngRad +
+      Math.atan2(
+        Math.sin(bearingRad) * Math.sin(d) * Math.cos(latRad),
+        Math.cos(d) - Math.sin(latRad) * Math.sin(lat2)
+      );
+
+    coords.push([(lng2 * 180) / Math.PI, (lat2 * 180) / Math.PI]);
+  }
+
+  return coords;
+}
 
 /**
  * Generate a FeatureCollection of ring annuli, each with properties

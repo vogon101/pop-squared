@@ -1,8 +1,11 @@
 import { fromFile, fromUrl, GeoTIFF, GeoTIFFImage } from "geotiff";
 import path from "path";
-import { haversineDistance, boundingBox } from "./geo";
+import { haversineDistance, bearing, boundingBox } from "./geo";
 import { generateRingBoundaries } from "./rings";
-import type { PopulationQuery, PopulationResult, RingResult } from "./types";
+import type { PopulationQuery, PopulationResult, RingResult, WedgeResult } from "./types";
+
+const NUM_SECTORS = 12;
+const SECTOR_SIZE_DEG = 360 / NUM_SECTORS;
 
 const MIN_DISTANCE_KM = 0.1; // Clamp for inverse-square (100m)
 
@@ -73,6 +76,12 @@ export async function computePopulation(
   const ringPop = new Float64Array(ringCount);
   const ringInvSq = new Float64Array(ringCount);
   const ringArea = new Float64Array(ringCount);
+
+  // Wedge accumulators: ringCount * NUM_SECTORS
+  const wedgePop = new Float64Array(ringCount * NUM_SECTORS);
+  const wedgeInvSq = new Float64Array(ringCount * NUM_SECTORS);
+  const wedgeArea = new Float64Array(ringCount * NUM_SECTORS);
+
   let totalPop = 0;
   let inverseSqSum = 0;
   let inverseSqWeightSum = 0;
@@ -116,8 +125,9 @@ export async function computePopulation(
 
         const r = Math.max(dist, MIN_DISTANCE_KM);
         const weight = 1 / Math.pow(r, exponent);
-        ringInvSq[ringIdx] += pop * weight;
-        inverseSqSum += pop * weight;
+        const contribution = pop * weight;
+        ringInvSq[ringIdx] += contribution;
+        inverseSqSum += contribution;
         inverseSqWeightSum += weight;
 
         // Approximate pixel area
@@ -128,6 +138,14 @@ export async function computePopulation(
           6371 *
           (pixelSizeDeg * (Math.PI / 180) * 6371 * cosLat);
         ringArea[ringIdx] += areaKm2;
+
+        // Wedge accumulation
+        const brng = bearing(lat, lng, pixelLat, pixelLng);
+        const sectorIdx = Math.min(Math.floor(brng / SECTOR_SIZE_DEG), NUM_SECTORS - 1);
+        const wedgeIdx = ringIdx * NUM_SECTORS + sectorIdx;
+        wedgePop[wedgeIdx] += pop;
+        wedgeInvSq[wedgeIdx] += contribution;
+        wedgeArea[wedgeIdx] += areaKm2;
       }
     }
   }
@@ -146,6 +164,36 @@ export async function computePopulation(
     });
   }
 
+  // Build wedge results
+  // Find max value for intensity normalization
+  let maxWedgeVal = 0;
+  for (let i = 0; i < ringCount * NUM_SECTORS; i++) {
+    if (wedgeInvSq[i] > maxWedgeVal) maxWedgeVal = wedgeInvSq[i];
+  }
+  if (maxWedgeVal === 0) maxWedgeVal = 1;
+
+  const wedges: WedgeResult[] = [];
+  for (let r = 0; r < ringCount; r++) {
+    for (let s = 0; s < NUM_SECTORS; s++) {
+      const idx = r * NUM_SECTORS + s;
+      const area = wedgeArea[idx] || 1;
+      const pop = wedgePop[idx];
+      wedges.push({
+        ringIdx: r,
+        sectorIdx: s,
+        innerKm: ringBounds[r],
+        outerKm: ringBounds[r + 1],
+        startAngle: s * SECTOR_SIZE_DEG,
+        endAngle: (s + 1) * SECTOR_SIZE_DEG,
+        population: Math.round(pop),
+        areaSqKm: Math.round(area * 10) / 10,
+        density: Math.round(pop / area),
+        inverseSqContribution: Math.round(wedgeInvSq[idx] * 100) / 100,
+        intensity: wedgeInvSq[idx] / maxWedgeVal,
+      });
+    }
+  }
+
   return {
     totalPopulation: Math.round(totalPop),
     inverseSqSum: Math.round(inverseSqSum * 100) / 100,
@@ -154,6 +202,7 @@ export async function computePopulation(
         ? Math.round((inverseSqSum / inverseSqWeightSum) * 100) / 100
         : 0,
     rings,
+    wedges,
     pixelsProcessed,
     computeTimeMs: Math.round(performance.now() - startTime),
     center: { lat, lng },

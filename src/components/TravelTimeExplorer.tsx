@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { TransportMode } from "@/lib/travel-time-types";
 import type { TimeBand } from "@/lib/travel-time-types";
 import OriginCombobox from "./OriginCombobox";
+import Tooltip from "./Tooltip";
 
 interface Origin {
   id: string;
@@ -31,8 +32,8 @@ interface TravelTimeExplorerProps {
   onExponentChange: (exp: number) => void;
   maxTimeMin: number;
   onMaxTimeChange: (min: number) => void;
-  colorBy: "travel-time" | "weight";
-  onColorByChange: (cb: "travel-time" | "weight") => void;
+  colorBy: "travel-time" | "population" | "weight";
+  onColorByChange: (cb: "travel-time" | "population" | "weight") => void;
   results: Results | null;
   loading: boolean;
   error: string | null;
@@ -110,6 +111,7 @@ export default function TravelTimeExplorer({
   loading,
   error,
 }: TravelTimeExplorerProps) {
+  const [tableView, setTableView] = useState<"cumulative" | "per-band">("cumulative");
   return (
     <div className="space-y-5">
       {/* Origin Selector */}
@@ -143,9 +145,11 @@ export default function TravelTimeExplorer({
 
       {/* Exponent Slider */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">
-          Exponent: {exponent.toFixed(1)} &mdash; 1/t<sup>{formatExp(exponent)}</sup>
-        </label>
+        <Tooltip text="Controls how fast weight drops with distance. n=1: gentle. n=2: inverse-square (gravity). n=3: very local.">
+          <label className="text-sm font-medium text-gray-700 cursor-help border-b border-dashed border-gray-300">
+            Exponent: {exponent.toFixed(1)} &mdash; 1/t<sup>{formatExp(exponent)}</sup>
+          </label>
+        </Tooltip>
         <input
           type="range"
           min={0.1}
@@ -170,26 +174,23 @@ export default function TravelTimeExplorer({
           Colour by
         </label>
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-          <button
-            onClick={() => onColorByChange("travel-time")}
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-              colorBy === "travel-time"
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Travel Time
-          </button>
-          <button
-            onClick={() => onColorByChange("weight")}
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-              colorBy === "weight"
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            1/t<sup>n</sup> Weight
-          </button>
+          {([
+            { value: "travel-time" as const, label: "Time" },
+            { value: "population" as const, label: "Population" },
+            { value: "weight" as const, label: `1/t${formatExp(exponent)}` },
+          ]).map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onColorByChange(opt.value)}
+              className={`flex-1 px-2 py-2 text-sm font-medium transition-colors ${
+                colorBy === opt.value
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -223,18 +224,24 @@ export default function TravelTimeExplorer({
           </div>
 
           <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-3">
-            <p className="text-xs uppercase tracking-wide text-blue-600 font-medium">
-              Travel-Time Gravity (1/t<sup>{formatExp(exponent)}</sup>)
-            </p>
+            <Tooltip text="Weights population by travel time: each person contributes pop/t^n.">
+              <p className="text-xs uppercase tracking-wide text-blue-600 font-medium cursor-help border-b border-dashed border-blue-300">
+                Travel-Time Gravity (1/t<sup>{formatExp(exponent)}</sup>)
+              </p>
+            </Tooltip>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-blue-500 font-medium">Raw</p>
+                <Tooltip text="Sum of pop/t^n across all reachable cells.">
+                  <p className="text-xs text-blue-500 font-medium cursor-help border-b border-dashed border-blue-300">Raw</p>
+                </Tooltip>
                 <p className="text-lg font-semibold text-blue-900">
                   {results.rawSum.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-blue-500 font-medium">Normalized</p>
+                <Tooltip text="Raw / sum of weights. A travel-time-weighted average, comparable across max-time choices.">
+                  <p className="text-xs text-blue-500 font-medium cursor-help border-b border-dashed border-blue-300">Normalized</p>
+                </Tooltip>
                 <p className="text-lg font-semibold text-blue-900">
                   {results.normalized.toLocaleString()}
                 </p>
@@ -243,10 +250,34 @@ export default function TravelTimeExplorer({
           </div>
 
           {/* Time Band Table */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">
-              Time Band Breakdown
-            </h3>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-gray-700">
+                Time Band Breakdown
+              </h3>
+              <div className="flex rounded-md border border-gray-200 overflow-hidden text-xs">
+                <button
+                  onClick={() => setTableView("cumulative")}
+                  className={`px-2.5 py-1 font-medium transition-colors ${
+                    tableView === "cumulative"
+                      ? "bg-gray-800 text-white"
+                      : "bg-white text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  Cumulative
+                </button>
+                <button
+                  onClick={() => setTableView("per-band")}
+                  className={`px-2.5 py-1 font-medium transition-colors ${
+                    tableView === "per-band"
+                      ? "bg-gray-800 text-white"
+                      : "bg-white text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  Per-band
+                </button>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -260,27 +291,38 @@ export default function TravelTimeExplorer({
                   </tr>
                 </thead>
                 <tbody>
-                  {results.timeBands
-                    .filter((b) => b.cellCount > 0)
-                    .map((band) => (
-                      <tr
-                        key={band.minMin}
-                        className="border-b border-gray-100 text-gray-700"
-                      >
-                        <td className="py-1.5 pr-2">
-                          {band.minMin}&ndash;{band.maxMin}
-                        </td>
-                        <td className="py-1.5 pr-2 text-right tabular-nums">
-                          {band.population.toLocaleString()}
-                        </td>
-                        <td className="py-1.5 pr-2 text-right tabular-nums">
-                          {band.cellCount.toLocaleString()}
-                        </td>
-                        <td className="py-1.5 text-right tabular-nums">
-                          {Math.round(band.weightedContribution * 100) / 100}
-                        </td>
-                      </tr>
-                    ))}
+                  {(() => {
+                    const isCum = tableView === "cumulative";
+                    const filtered = results.timeBands.filter(
+                      (b) => b.cellCount > 0 && b.minMin < maxTimeMin
+                    );
+                    let cumPop = 0;
+                    let cumWeight = 0;
+                    return filtered.map((band) => {
+                      cumPop += band.population;
+                      cumWeight += band.weightedContribution;
+                      const displayMax = Math.min(band.maxMin, maxTimeMin);
+                      return (
+                        <tr
+                          key={band.minMin}
+                          className="border-b border-gray-100 text-gray-700"
+                        >
+                          <td className="py-1.5 pr-2">
+                            {isCum ? `0\u2013${displayMax}` : `${band.minMin}\u2013${displayMax}`}
+                          </td>
+                          <td className="py-1.5 pr-2 text-right tabular-nums">
+                            {(isCum ? cumPop : band.population).toLocaleString()}
+                          </td>
+                          <td className="py-1.5 pr-2 text-right tabular-nums">
+                            {band.cellCount.toLocaleString()}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums">
+                            {Math.round((isCum ? cumWeight : band.weightedContribution) * 100) / 100}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>

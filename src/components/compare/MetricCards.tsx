@@ -1,6 +1,7 @@
 "use client";
 
 import type { CompareMode } from "./ModePicker";
+import Tooltip from "@/components/Tooltip";
 
 interface MetricRow {
   label: string;
@@ -14,6 +15,8 @@ interface MetricCardsProps {
   rows: MetricRow[];
   loadingA: boolean;
   loadingB: boolean;
+  labelA?: string;
+  labelB?: string;
 }
 
 function formatNumber(n: number): string {
@@ -39,7 +42,12 @@ function formatDelta(a: number | null, b: number | null): { text: string; color:
   return { text: `${winner} +${pct.toFixed(0)}%`, color };
 }
 
-export default function MetricCards({ rows, loadingA, loadingB }: MetricCardsProps) {
+const LABEL_TOOLTIPS: Record<string, string> = {
+  "Raw Gravity": "Sum of pop weighted by inverse distance or time. Higher = more people are nearby.",
+  "Normalized": "Raw / sum of weights. A weighted average, comparable across parameter choices.",
+};
+
+export default function MetricCards({ rows, loadingA, loadingB, labelA = "A", labelB = "B" }: MetricCardsProps) {
   if (loadingA || loadingB) {
     return (
       <div className="flex items-center gap-2 text-gray-500">
@@ -53,6 +61,11 @@ export default function MetricCards({ rows, loadingA, loadingB }: MetricCardsPro
 
   return (
     <div className="space-y-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mb-1">
+        <p className="text-right text-xs font-semibold text-blue-700 truncate">{labelA}</p>
+        <div className="min-w-[100px]" />
+        <p className="text-left text-xs font-semibold text-orange-700 truncate">{labelB}</p>
+      </div>
       {rows.map((row) => {
         const delta = formatDelta(row.valueA, row.valueB);
         return (
@@ -65,7 +78,13 @@ export default function MetricCards({ rows, loadingA, loadingB }: MetricCardsPro
             </div>
             {/* Label + delta */}
             <div className="text-center min-w-[100px]">
-              <p className="text-xs font-medium text-gray-700">{row.label}</p>
+              {LABEL_TOOLTIPS[row.label] ? (
+                <Tooltip text={LABEL_TOOLTIPS[row.label]}>
+                  <p className="text-xs font-medium text-gray-700 cursor-help border-b border-dashed border-gray-300 inline">{row.label}</p>
+                </Tooltip>
+              ) : (
+                <p className="text-xs font-medium text-gray-700">{row.label}</p>
+              )}
               {row.sublabel && (
                 <p className="text-[10px] text-gray-400">{row.sublabel}</p>
               )}

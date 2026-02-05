@@ -10,12 +10,16 @@ interface DistributionChartProps {
   bands: Band[];
   colorA?: string;
   colorB?: string;
+  labelA?: string;
+  labelB?: string;
 }
 
 export default function DistributionChart({
   bands,
   colorA = "#1e40af",
   colorB = "#c2410c",
+  labelA = "A",
+  labelB = "B",
 }: DistributionChartProps) {
   if (bands.length === 0) return null;
 
@@ -41,10 +45,10 @@ export default function DistributionChart({
     >
       {/* Header labels */}
       <text x={centerX / 2} y={12} textAnchor="middle" className="fill-blue-700 text-[10px] font-medium">
-        A
+        {labelA}
       </text>
       <text x={centerX + labelWidth + halfChart / 2} y={12} textAnchor="middle" className="fill-orange-700 text-[10px] font-medium">
-        B
+        {labelB}
       </text>
 
       {bands.map((band, i) => {
