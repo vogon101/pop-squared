@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Uploads precomputed travel-time JSON files to a Cloudflare R2 bucket.
+# Also generates and uploads a manifest.json listing all computed origins.
+#
+# Prerequisites: same as deploy-r2.sh (AWS CLI + R2 credentials in .env.local)
+#
+# After uploading, set TRAVEL_TIME_URL in your hosting env vars:
+#   TRAVEL_TIME_URL=https://<subdomain>.r2.dev/travel-time
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+DATA_DIR="$PROJECT_DIR/data/travel-time"
+BUCKET_NAME="${R2_BUCKET:-pop-squared-data}"
+R2_PREFIX="travel-time"
+
+echo "=== deploy-travel-time-r2.sh ==="
+echo "Data dir: $DATA_DIR"
+echo "Bucket:   $BUCKET_NAME"
+echo "Prefix:   $R2_PREFIX"
+echo ""
+
+# Load credentials from .env.local if present
+ENV_FILE="$PROJECT_DIR/.env.local"
+if [ -f "$ENV_FILE" ]; then
+  echo "Loading R2 credentials from $ENV_FILE"
+  while IFS='=' read -r key value; do
+    case "$key" in
+      R2_*) export "$key=$value" ;;
+    esac
+  done < "$ENV_FILE"
+fi
+
+if [ ! -d "$DATA_DIR" ]; then
+  echo "Error: $DATA_DIR not found. Compute some origins first."
+  exit 1
+fi
+
+JSON_FILES=("$DATA_DIR"/*.json)
+if [ ${#JSON_FILES[@]} -eq 0 ]; then
+  echo "Error: No JSON files found in $DATA_DIR"
+  exit 1
+fi
+
+if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_KEY:-}" ]; then
+  echo "Missing R2 credentials. Add these to .env.local:"
+  echo "  R2_ACCOUNT_ID=<your cloudflare account id>"
+  echo "  R2_ACCESS_KEY_ID=<from R2 API token>"
+  echo "  R2_SECRET_KEY=<from R2 API token>"
+  exit 1
+fi
+
+ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+# Generate manifest.json
+echo "Generating manifest.json..."
+MANIFEST="["
+FIRST=true
+for f in "${JSON_FILES[@]}"; do
+  BASENAME="$(basename "$f" .json)"
+  # Extract cell count using grep (fast, avoids parsing full JSON)
+  CELL_COUNT=$(grep -o '"lat"' "$f" | wc -l | tr -d ' ')
+  if [ "$FIRST" = true ]; then
+    FIRST=false
+  else
+    MANIFEST+=","
+  fi
+  MANIFEST+="{\"id\":\"$BASENAME\",\"cellCount\":$CELL_COUNT}"
+done
+MANIFEST+="]"
+
+MANIFEST_FILE="$DATA_DIR/manifest.json"
+echo "$MANIFEST" > "$MANIFEST_FILE"
+echo "Manifest: $(echo "$MANIFEST" | grep -o '"id"' | wc -l | tr -d ' ') origins"
+echo ""
+
+# Upload all files
+FILE_COUNT=$((${#JSON_FILES[@]} + 1))  # +1 for manifest
+echo "Uploading $FILE_COUNT files to R2..."
+echo ""
+
+UPLOADED=0
+for f in "${JSON_FILES[@]}" "$MANIFEST_FILE"; do
+  BASENAME="$(basename "$f")"
+  UPLOADED=$((UPLOADED + 1))
+  echo "[$UPLOADED/$FILE_COUNT] $BASENAME"
+  AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+  AWS_SECRET_ACCESS_KEY="$R2_SECRET_KEY" \
+  aws s3 cp "$f" "s3://$BUCKET_NAME/$R2_PREFIX/$BASENAME" \
+    --endpoint-url "$ENDPOINT" \
+    --content-type "application/json" \
+    --quiet
+done
+
+echo ""
+echo "Upload complete! $UPLOADED files uploaded."
+echo ""
+echo "Next steps:"
+echo "  1. Ensure public access is enabled on the R2 bucket"
+echo "  2. Set TRAVEL_TIME_URL in your hosting env vars:"
+echo "     TRAVEL_TIME_URL=https://<subdomain>.r2.dev/$R2_PREFIX"

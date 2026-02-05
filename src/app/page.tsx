@@ -32,7 +32,7 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen flex flex-col md:flex-row">
+    <div className="h-full flex flex-col md:flex-row">
       {/* Map */}
       <div className="flex-1 relative">
         <Map

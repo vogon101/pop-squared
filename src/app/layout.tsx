@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import NavBar from "@/components/NavBar";
 
 export const metadata: Metadata = {
   title: "Pop Squared",
@@ -19,7 +20,10 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased flex flex-col h-screen">
+        <NavBar />
+        <div className="flex-1 overflow-hidden">{children}</div>
+      </body>
     </html>
   );
 }
