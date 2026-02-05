@@ -76,8 +76,10 @@ MANIFEST="["
 FIRST=true
 for f in "${JSON_FILES[@]}"; do
   BASENAME="$(basename "$f" .json)"
+  # Skip the manifest itself
+  if [ "$BASENAME" = "manifest" ]; then continue; fi
   # Extract cell count using grep (fast, avoids parsing full JSON)
-  CELL_COUNT=$(grep -o '"lat"' "$f" | wc -l | tr -d ' ')
+  CELL_COUNT=$(grep -co '"lat"' "$f" || true)
   if [ "$FIRST" = true ]; then
     FIRST=false
   else
