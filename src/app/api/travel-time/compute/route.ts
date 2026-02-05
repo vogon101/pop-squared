@@ -30,6 +30,10 @@ function getClient(): TravelTimeProtoClient {
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_DEV_MODE !== "true") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     const body = await request.json();
     const { originId } = body;

@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import ComputeDashboard from "@/components/ComputeDashboard";
 
 export const metadata = {
@@ -6,6 +7,10 @@ export const metadata = {
 };
 
 export default function ComputePage() {
+  if (process.env.NEXT_PUBLIC_DEV_MODE !== "true") {
+    notFound();
+  }
+
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="max-w-5xl mx-auto px-6 py-8">

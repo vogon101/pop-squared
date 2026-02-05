@@ -269,7 +269,7 @@ export default function ExplorePage() {
     };
   }, [origins]);
 
-  // Show/hide origins overview vs cell data
+  // Keep origins visible; filter out the selected one (it has its own marker)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -277,18 +277,17 @@ export default function ExplorePage() {
     const originsSource = map.getSource("origins-points") as mapboxgl.GeoJSONSource;
     if (!originsSource) return;
 
+    originsSource.setData(originsGeoJson);
+    map.setLayoutProperty("origins-circles", "visibility", "visible");
+    map.setLayoutProperty("origins-labels", "visibility", "visible");
+
     if (selectedOrigin) {
-      // Hide overview, show cells
-      originsSource.setData(EMPTY_FC);
-      map.setLayoutProperty("origins-circles", "visibility", "none");
-      map.setLayoutProperty("origins-labels", "visibility", "none");
+      map.setFilter("origins-circles", ["!=", ["get", "id"], selectedOrigin]);
+      map.setFilter("origins-labels", ["!=", ["get", "id"], selectedOrigin]);
     } else {
-      // Show overview, clear cells
-      originsSource.setData(originsGeoJson);
-      map.setLayoutProperty("origins-circles", "visibility", "visible");
-      map.setLayoutProperty("origins-labels", "visibility", "visible");
+      map.setFilter("origins-circles", null);
+      map.setFilter("origins-labels", null);
       markerRef.current?.remove();
-      // Also clear cells when deselecting
       const cellsSource = map.getSource("cells") as mapboxgl.GeoJSONSource;
       if (cellsSource) cellsSource.setData(EMPTY_FC);
     }
