@@ -21,9 +21,10 @@ export default function Home() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [radiusKm, setRadiusKm] = useState(10);
+  const [exponent, setExponent] = useState(2);
   const [colorBy, setColorBy] = useState<ColorBy>("inverse-square");
 
-  const { result, loading, error } = usePopulation({ lat, lng, radiusKm });
+  const { result, loading, error } = usePopulation({ lat, lng, radiusKm, exponent });
 
   const handleLocationSelect = (newLat: number, newLng: number) => {
     setLat(newLat);
@@ -57,13 +58,15 @@ export default function Home() {
           <Controls
             radiusKm={radiusKm}
             onRadiusChange={setRadiusKm}
+            exponent={exponent}
+            onExponentChange={setExponent}
             colorBy={colorBy}
             onColorByChange={setColorBy}
           />
         </div>
 
         <div className="p-5 border-b border-gray-100">
-          <Results result={result} loading={loading} error={error} />
+          <Results result={result} loading={loading} error={error} exponent={exponent} />
         </div>
 
         {result && result.rings.length > 0 && (
@@ -71,7 +74,7 @@ export default function Home() {
             <h2 className="text-sm font-medium text-gray-700 mb-2">
               Ring Breakdown
             </h2>
-            <RingTable rings={result.rings} />
+            <RingTable rings={result.rings} exponent={exponent} />
           </div>
         )}
 

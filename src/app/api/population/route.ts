@@ -5,7 +5,7 @@ import type { PopulationQuery } from "@/lib/types";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { lat, lng, radiusKm } = body as Partial<PopulationQuery>;
+    const { lat, lng, radiusKm, exponent } = body as Partial<PopulationQuery>;
 
     if (typeof lat !== "number" || lat < -90 || lat > 90) {
       return NextResponse.json(
@@ -25,8 +25,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const exp = typeof exponent === "number" ? exponent : 2;
+    if (exp < 0.1 || exp > 3) {
+      return NextResponse.json(
+        { error: "exponent must be between 0.1 and 3" },
+        { status: 400 }
+      );
+    }
 
-    const result = await computePopulation({ lat, lng, radiusKm });
+    const result = await computePopulation({ lat, lng, radiusKm, exponent: exp });
     return NextResponse.json(result);
   } catch (error) {
     console.error("Population API error:", error);

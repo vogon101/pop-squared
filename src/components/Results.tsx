@@ -6,6 +6,7 @@ interface ResultsProps {
   result: PopulationResult | null;
   loading: boolean;
   error: string | null;
+  exponent: number;
 }
 
 function formatNumber(n: number): string {
@@ -18,7 +19,11 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-export default function Results({ result, loading, error }: ResultsProps) {
+function formatExp(n: number): string {
+  return n === Math.round(n) ? String(n) : n.toFixed(1);
+}
+
+export default function Results({ result, loading, error, exponent }: ResultsProps) {
   if (error) {
     return (
       <div className="rounded-lg bg-red-50 border border-red-200 p-4">
@@ -61,11 +66,13 @@ export default function Results({ result, loading, error }: ResultsProps) {
       <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-blue-600 font-medium">
-            Inverse-Square Gravity
+            Inverse-Distance Gravity (1/r<sup>{formatExp(exponent)}</sup>)
           </p>
           <p className="text-xs text-blue-400 mt-1">
-            Weights each person by 1/r&sup2; from the centre, like gravitational
-            pull. Nearby people count far more than distant ones.
+            Weights each person by 1/r<sup>{formatExp(exponent)}</sup> from the centre.
+            {exponent >= 1.5
+              ? " Nearby people count far more than distant ones."
+              : " Weighting is relatively flat across distances."}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -75,8 +82,8 @@ export default function Results({ result, loading, error }: ResultsProps) {
               {result.inverseSqSum.toLocaleString()}
             </p>
             <p className="text-xs text-blue-400 mt-0.5">
-              &Sigma;(pop / r&sup2;) &mdash; total &ldquo;gravitational
-              pull&rdquo; in people/km&sup2;. Higher means more people
+              &Sigma;(pop / r<sup>{formatExp(exponent)}</sup>) &mdash; total
+              &ldquo;gravitational pull&rdquo;. Higher means more people
               packed close to this point.
             </p>
           </div>
@@ -86,9 +93,9 @@ export default function Results({ result, loading, error }: ResultsProps) {
               {result.inverseSqNormalized.toLocaleString()}
             </p>
             <p className="text-xs text-blue-400 mt-0.5">
-              Raw / &Sigma;(1/r&sup2;) &mdash; a distance-weighted average
-              population per cell. Removes the effect of radius choice so
-              you can compare locations fairly.
+              Raw / &Sigma;(1/r<sup>{formatExp(exponent)}</sup>) &mdash; a
+              distance-weighted average population per cell. Removes the
+              effect of radius choice so you can compare locations fairly.
             </p>
           </div>
         </div>

@@ -2,6 +2,7 @@ export interface PopulationQuery {
   lat: number;
   lng: number;
   radiusKm: number;
+  exponent: number;
 }
 
 export interface RingResult {

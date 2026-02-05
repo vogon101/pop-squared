@@ -32,7 +32,7 @@ export async function computePopulation(
   query: PopulationQuery
 ): Promise<PopulationResult> {
   const startTime = performance.now();
-  const { lat, lng, radiusKm } = query;
+  const { lat, lng, radiusKm, exponent } = query;
 
   const image = await getImage();
   const [originX, originY] = image.getOrigin();
@@ -106,7 +106,7 @@ export async function computePopulation(
         ringPop[ringIdx] += pop;
 
         const r = Math.max(dist, MIN_DISTANCE_KM);
-        const weight = 1 / (r * r);
+        const weight = 1 / Math.pow(r, exponent);
         ringInvSq[ringIdx] += pop * weight;
         inverseSqSum += pop * weight;
         inverseSqWeightSum += weight;

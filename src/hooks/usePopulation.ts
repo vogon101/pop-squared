@@ -7,6 +7,7 @@ interface UsePopulationParams {
   lat: number | null;
   lng: number | null;
   radiusKm: number;
+  exponent: number;
 }
 
 interface UsePopulationReturn {
@@ -19,6 +20,7 @@ export function usePopulation({
   lat,
   lng,
   radiusKm,
+  exponent,
 }: UsePopulationParams): UsePopulationReturn {
   const [result, setResult] = useState<PopulationResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +41,7 @@ export function usePopulation({
       const res = await fetch("/api/population", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lng, radiusKm }),
+        body: JSON.stringify({ lat, lng, radiusKm, exponent }),
         signal: controller.signal,
       });
 
@@ -58,7 +60,7 @@ export function usePopulation({
         setLoading(false);
       }
     }
-  }, [lat, lng, radiusKm]);
+  }, [lat, lng, radiusKm, exponent]);
 
   useEffect(() => {
     fetchPopulation();

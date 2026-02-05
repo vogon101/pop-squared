@@ -4,9 +4,10 @@ import type { RingResult } from "@/lib/types";
 
 interface RingTableProps {
   rings: RingResult[];
+  exponent: number;
 }
 
-export default function RingTable({ rings }: RingTableProps) {
+export default function RingTable({ rings, exponent }: RingTableProps) {
   if (rings.length === 0) return null;
 
   return (
@@ -18,7 +19,7 @@ export default function RingTable({ rings }: RingTableProps) {
             <th className="py-1.5 pr-2 text-right">Population</th>
             <th className="py-1.5 pr-2 text-right">Area (km&sup2;)</th>
             <th className="py-1.5 pr-2 text-right">Density</th>
-            <th className="py-1.5 text-right">1/r&sup2;</th>
+            <th className="py-1.5 text-right">1/r<sup>{exponent === Math.round(exponent) ? exponent : exponent.toFixed(1)}</sup></th>
           </tr>
         </thead>
         <tbody>

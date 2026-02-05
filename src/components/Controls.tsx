@@ -9,6 +9,8 @@ const UNLIMITED_MAX = 500;
 interface ControlsProps {
   radiusKm: number;
   onRadiusChange: (radius: number) => void;
+  exponent: number;
+  onExponentChange: (exponent: number) => void;
   colorBy: ColorBy;
   onColorByChange: (colorBy: ColorBy) => void;
 }
@@ -16,6 +18,8 @@ interface ControlsProps {
 export default function Controls({
   radiusKm,
   onRadiusChange,
+  exponent,
+  onExponentChange,
   colorBy,
   onColorByChange,
 }: ControlsProps) {
@@ -57,6 +61,25 @@ export default function Controls({
         <div className="flex justify-between text-xs text-gray-400">
           <span>3 km</span>
           <span>{maxKm} km</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700">
+          Exponent: {exponent.toFixed(1)} &mdash; 1/r<sup>{exponent === Math.round(exponent) ? exponent : exponent.toFixed(1)}</sup>
+        </label>
+        <input
+          type="range"
+          min={0.1}
+          max={3}
+          step={0.1}
+          value={exponent}
+          onChange={(e) => onExponentChange(Number(e.target.value))}
+          className="w-full accent-blue-600"
+        />
+        <div className="flex justify-between text-xs text-gray-400">
+          <span>0.1</span>
+          <span>3.0</span>
         </div>
       </div>
 
