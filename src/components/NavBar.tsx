@@ -8,6 +8,7 @@ const isDev = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 const LINKS = [
   { href: "/", label: "Distance" },
   { href: "/explore", label: "Time" },
+  { href: "/compare", label: "Compare" },
   ...(isDev ? [{ href: "/compute", label: "Compute" }] : []),
 ];
 
