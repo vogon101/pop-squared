@@ -1,4 +1,4 @@
-import { fromFile, GeoTIFF, GeoTIFFImage } from "geotiff";
+import { fromFile, fromUrl, GeoTIFF, GeoTIFFImage } from "geotiff";
 import path from "path";
 import { haversineDistance, boundingBox } from "./geo";
 import { generateRingBoundaries } from "./rings";
@@ -6,18 +6,24 @@ import type { PopulationQuery, PopulationResult, RingResult } from "./types";
 
 const MIN_DISTANCE_KM = 0.1; // Clamp for inverse-square (100m)
 
+const TIFF_FILENAME = "GHS_POP_E2025_GLOBE_R2023A_4326_30ss_V1_0.tif";
+
 let cachedTiff: GeoTIFF | null = null;
 let cachedImage: GeoTIFFImage | null = null;
 
 async function getImage(): Promise<GeoTIFFImage> {
   if (cachedImage) return cachedImage;
 
-  const tifPath = path.join(
-    process.cwd(),
-    "data",
-    "GHS_POP_E2025_GLOBE_R2023A_4326_30ss_V1_0.tif"
-  );
-  cachedTiff = await fromFile(tifPath);
+  const remoteUrl = process.env.GEOTIFF_URL;
+  if (remoteUrl) {
+    // Remote: HTTP range requests against R2/S3/any URL
+    cachedTiff = await fromUrl(remoteUrl);
+  } else {
+    // Local: read from data/ directory
+    const tifPath = path.join(process.cwd(), "data", TIFF_FILENAME);
+    cachedTiff = await fromFile(tifPath);
+  }
+
   cachedImage = await cachedTiff.getImage();
   return cachedImage;
 }

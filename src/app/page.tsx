@@ -6,6 +6,7 @@ import Controls from "@/components/Controls";
 import Results from "@/components/Results";
 import RingTable from "@/components/RingTable";
 import { usePopulation } from "@/hooks/usePopulation";
+import type { ColorBy } from "@/lib/circle-geojson";
 
 const Map = dynamic(() => import("@/components/Map"), {
   ssr: false,
@@ -20,6 +21,7 @@ export default function Home() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [radiusKm, setRadiusKm] = useState(10);
+  const [colorBy, setColorBy] = useState<ColorBy>("inverse-square");
 
   const { result, loading, error } = usePopulation({ lat, lng, radiusKm });
 
@@ -37,6 +39,8 @@ export default function Home() {
           selectedLat={lat}
           selectedLng={lng}
           radiusKm={radiusKm}
+          result={result}
+          colorBy={colorBy}
         />
       </div>
 
@@ -50,7 +54,12 @@ export default function Home() {
         </div>
 
         <div className="p-5 border-b border-gray-100">
-          <Controls radiusKm={radiusKm} onRadiusChange={setRadiusKm} />
+          <Controls
+            radiusKm={radiusKm}
+            onRadiusChange={setRadiusKm}
+            colorBy={colorBy}
+            onColorByChange={setColorBy}
+          />
         </div>
 
         <div className="p-5 border-b border-gray-100">

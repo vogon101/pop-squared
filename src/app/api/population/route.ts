@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (typeof radiusKm !== "number" || radiusKm < 1 || radiusKm > 100) {
+    if (typeof radiusKm !== "number" || radiusKm < 1 || radiusKm > 500) {
       return NextResponse.json(
-        { error: "radiusKm must be a number between 1 and 100" },
+        { error: "radiusKm must be a number between 1 and 500" },
         { status: 400 }
       );
     }
