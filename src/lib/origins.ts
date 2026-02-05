@@ -141,7 +141,7 @@ export const ORIGINS: Origin[] = [
   { id: "edi", name: "Edinburgh Airport (EDI)", lat: 55.9508, lng: -3.3615, type: "airport", country: "GB" },
   { id: "bhx", name: "Birmingham Airport (BHX)", lat: 52.4539, lng: -1.7480, type: "airport", country: "GB" },
   { id: "gla", name: "Glasgow Airport (GLA)", lat: 55.8719, lng: -4.4331, type: "airport", country: "GB" },
-  { id: "brs", name: "Bristol Airport (BRS)", lat: 51.3827, lng: -2.7191, type: "airport", country: "GB" },
+  { id: "brs", name: "Bristol Airport (BRS)", lat: 51.3890, lng: -2.7240, type: "airport", country: "GB" },
   { id: "ncl", name: "Newcastle Airport (NCL)", lat: 55.0375, lng: -1.6917, type: "airport", country: "GB" },
   { id: "cdg", name: "Paris CDG", lat: 49.0097, lng: 2.5479, type: "airport", country: "FR" },
   { id: "ams", name: "Amsterdam Schiphol (AMS)", lat: 52.3105, lng: 4.7683, type: "airport", country: "NL" },

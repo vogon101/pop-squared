@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import TravelTimeExplorer from "@/components/TravelTimeExplorer";
 import { useTravelTimeData } from "@/hooks/useTravelTimeData";
@@ -21,39 +21,76 @@ const EMPTY_FC: GeoJSON.FeatureCollection = {
   features: [],
 };
 
-// Pixel size for 30-arcsecond grid
+// Pixel size for 30-arcsecond grid (~1km)
 const PIXEL_SIZE_DEG = 1 / 120;
 
-function cellToFeature(
-  cell: TravelTimeCell & { time: number; weight: number },
-  maxWeight: number,
-  maxTimeSec: number
-): GeoJSON.Feature {
-  const half = PIXEL_SIZE_DEG / 2;
-  const normalizedTime = Math.min(cell.time / maxTimeSec, 1);
-  const normalizedWeight = maxWeight > 0 ? cell.weight / maxWeight : 0;
+// Merge cells into NxN supercells for display performance
+const DOWNSAMPLE = 4; // 4x4 = ~4km tiles, reduces ~30K → ~2K features
+const SUPER_SIZE_DEG = PIXEL_SIZE_DEG * DOWNSAMPLE;
 
-  return {
-    type: "Feature",
-    properties: {
-      travelTime: cell.time,
-      travelTimeMin: Math.round(cell.time / 60),
-      weight: cell.weight,
-      normalizedTime,
-      normalizedWeight,
-      pop: cell.pop,
-    },
-    geometry: {
-      type: "Polygon",
-      coordinates: [[
-        [cell.lng - half, cell.lat - half],
-        [cell.lng + half, cell.lat - half],
-        [cell.lng + half, cell.lat + half],
-        [cell.lng - half, cell.lat + half],
-        [cell.lng - half, cell.lat - half],
-      ]],
-    },
-  };
+interface SuperCell {
+  // grid key coords (snapped to supercell grid)
+  gLat: number;
+  gLng: number;
+  totalPop: number;
+  totalWeight: number;
+  // population-weighted average travel time
+  sumPopTime: number;
+  count: number;
+}
+
+function buildSuperCells(
+  cells: (TravelTimeCell & { time: number; weight: number })[]
+): GeoJSON.FeatureCollection {
+  // Bin cells into supercells keyed by snapped grid position
+  const map = new Map<string, SuperCell>();
+
+  for (const c of cells) {
+    // Snap to supercell grid
+    const gLat = Math.floor(c.lat / SUPER_SIZE_DEG) * SUPER_SIZE_DEG;
+    const gLng = Math.floor(c.lng / SUPER_SIZE_DEG) * SUPER_SIZE_DEG;
+    const key = `${gLat},${gLng}`;
+
+    let sc = map.get(key);
+    if (!sc) {
+      sc = { gLat, gLng, totalPop: 0, totalWeight: 0, sumPopTime: 0, count: 0 };
+      map.set(key, sc);
+    }
+    sc.totalPop += c.pop;
+    sc.totalWeight += c.weight;
+    sc.sumPopTime += c.pop * c.time;
+    sc.count++;
+  }
+
+  const features: GeoJSON.Feature[] = [];
+  const half = SUPER_SIZE_DEG / 2;
+
+  for (const sc of map.values()) {
+    const avgTime = sc.totalPop > 0 ? sc.sumPopTime / sc.totalPop : 0;
+    const cx = sc.gLng + half;
+    const cy = sc.gLat + half;
+
+    features.push({
+      type: "Feature",
+      properties: {
+        travelTimeMin: Math.round(avgTime / 60),
+        weight: sc.totalWeight,
+        pop: sc.totalPop,
+      },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [cx - half, cy - half],
+          [cx + half, cy - half],
+          [cx + half, cy + half],
+          [cx - half, cy + half],
+          [cx - half, cy - half],
+        ]],
+      },
+    });
+  }
+
+  return { type: "FeatureCollection", features };
 }
 
 export default function ExplorePage() {
@@ -63,6 +100,7 @@ export default function ExplorePage() {
   const [exponent, setExponent] = useState(1);
   const [maxTimeMin, setMaxTimeMin] = useState(120);
   const [colorBy, setColorBy] = useState<"travel-time" | "weight">("travel-time");
+  const [originsError, setOriginsError] = useState<string | null>(null);
 
   const { data, loading, error, results } = useTravelTimeData(
     selectedOrigin,
@@ -74,9 +112,18 @@ export default function ExplorePage() {
   // Load origins list
   useEffect(() => {
     fetch("/api/travel-time/origins")
-      .then((r) => r.json())
-      .then((d) => setOrigins(d.origins))
-      .catch(console.error);
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Failed to load origins (HTTP ${r.status})`);
+        return r.json();
+      })
+      .then((d) => {
+        setOrigins(d.origins);
+        setOriginsError(null);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setOriginsError(err instanceof Error ? err.message : "Failed to load origins");
+      });
   }, []);
 
   // Map refs
@@ -103,23 +150,24 @@ export default function ExplorePage() {
     map.on("load", () => {
       map.addSource("cells", { type: "geojson", data: EMPTY_FC });
 
-      // Cell fill layer - color by travel time (default)
+      // Cell fill layer - banded color by travel time (default)
       map.addLayer({
         id: "cells-fill",
         type: "fill",
         source: "cells",
         paint: {
           "fill-color": [
-            "interpolate",
-            ["linear"],
-            ["get", "normalizedTime"],
-            0, "#22c55e",   // green-500
-            0.25, "#eab308", // yellow-500
-            0.5, "#f97316",  // orange-500
-            0.75, "#ef4444", // red-500
-            1.0, "#7f1d1d",  // red-900
+            "step",
+            ["get", "travelTimeMin"],
+            "#15803d",  // 0-15 min: green-700
+            15, "#22c55e",  // 15-30: green-500
+            30, "#eab308",  // 30-45: yellow-500
+            45, "#f59e0b",  // 45-60: amber-500
+            60, "#f97316",  // 60-90: orange-500
+            90, "#ef4444",  // 90-120: red-500
+            120, "#991b1b", // 120-180: red-800
           ],
-          "fill-opacity": 0.6,
+          "fill-opacity": 0.7,
         },
       });
 
@@ -246,21 +294,11 @@ export default function ExplorePage() {
     }
   }, [selectedOrigin, originsGeoJson, mapReady]);
 
-  // Build GeoJSON from results
+  // Build downsampled GeoJSON from results for map display
   const geoJson = useMemo((): GeoJSON.FeatureCollection => {
     if (!results || results.cells.length === 0) return EMPTY_FC;
-
-    let maxWeight = 0;
-    for (const c of results.cells) {
-      if (c.weight > maxWeight) maxWeight = c.weight;
-    }
-    const maxTimeSec = maxTimeMin * 60;
-
-    return {
-      type: "FeatureCollection",
-      features: results.cells.map((c) => cellToFeature(c, maxWeight, maxTimeSec)),
-    };
-  }, [results, maxTimeMin]);
+    return buildSuperCells(results.cells);
+  }, [results]);
 
   // Update map cells
   useEffect(() => {
@@ -273,6 +311,16 @@ export default function ExplorePage() {
     }
   }, [geoJson, mapReady]);
 
+  // Compute max weight for normalizing weight color bands
+  const maxWeight = useMemo(() => {
+    if (!results || results.cells.length === 0) return 1;
+    let mw = 0;
+    for (const c of results.cells) {
+      if (c.weight > mw) mw = c.weight;
+    }
+    return mw || 1;
+  }, [results]);
+
   // Update color scheme based on colorBy
   useEffect(() => {
     const map = mapRef.current;
@@ -280,27 +328,33 @@ export default function ExplorePage() {
 
     if (colorBy === "travel-time") {
       map.setPaintProperty("cells-fill", "fill-color", [
-        "interpolate",
-        ["linear"],
-        ["get", "normalizedTime"],
-        0, "#22c55e",
-        0.25, "#eab308",
-        0.5, "#f97316",
-        0.75, "#ef4444",
-        1.0, "#7f1d1d",
+        "step",
+        ["get", "travelTimeMin"],
+        "#15803d",  // 0-15 min
+        15, "#22c55e",
+        30, "#eab308",
+        45, "#f59e0b",
+        60, "#f97316",
+        90, "#ef4444",
+        120, "#991b1b",
       ]);
     } else {
+      // Weight mode: band by fraction of max weight in supercell
+      const w20 = maxWeight * 0.2;
+      const w40 = maxWeight * 0.4;
+      const w60 = maxWeight * 0.6;
+      const w80 = maxWeight * 0.8;
       map.setPaintProperty("cells-fill", "fill-color", [
-        "interpolate",
-        ["linear"],
-        ["get", "normalizedWeight"],
-        0, "#fef9c3",
-        0.3, "#fbbf24",
-        0.6, "#f97316",
-        1.0, "#dc2626",
+        "step",
+        ["get", "weight"],
+        "#fef9c3",    // lowest
+        w20, "#fde68a",
+        w40, "#fbbf24",
+        w60, "#f97316",
+        w80, "#dc2626",
       ]);
     }
-  }, [colorBy, mapReady]);
+  }, [colorBy, mapReady, maxWeight]);
 
   // Fly to origin when selected — show a prominent pulsing marker with label
   useEffect(() => {
@@ -354,26 +408,37 @@ export default function ExplorePage() {
         </div>
 
         <div className="p-5 flex-1">
-          <TravelTimeExplorer
-            origins={origins}
-            selectedOrigin={selectedOrigin}
-            onOriginChange={setSelectedOrigin}
-            mode={mode}
-            onModeChange={setMode}
-            exponent={exponent}
-            onExponentChange={setExponent}
-            maxTimeMin={maxTimeMin}
-            onMaxTimeChange={setMaxTimeMin}
-            colorBy={colorBy}
-            onColorByChange={setColorBy}
-            results={results}
-            loading={loading}
-            error={error}
-          />
+          {originsError ? (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4 space-y-2">
+              <p className="text-sm font-medium text-red-800">Unable to load travel-time data</p>
+              <p className="text-xs text-red-600">{originsError}</p>
+              <p className="text-xs text-gray-500">
+                Make sure precomputed data is available locally or via the <code className="bg-gray-100 px-1 rounded">TRAVEL_TIME_URL</code> environment variable.
+              </p>
+            </div>
+          ) : (
+            <TravelTimeExplorer
+              origins={origins}
+              selectedOrigin={selectedOrigin}
+              onOriginChange={setSelectedOrigin}
+              mode={mode}
+              onModeChange={setMode}
+              exponent={exponent}
+              onExponentChange={setExponent}
+              maxTimeMin={maxTimeMin}
+              onMaxTimeChange={setMaxTimeMin}
+              colorBy={colorBy}
+              onColorByChange={setColorBy}
+              results={results}
+              loading={loading}
+              error={error}
+            />
+          )}
         </div>
 
-        <div className="mt-auto p-4 text-xs text-gray-400 border-t border-gray-100">
-          Data: GHSL GHS-POP R2023A (JRC) + TravelTime API
+        <div className="mt-auto p-4 text-xs text-gray-400 border-t border-gray-100 space-y-1">
+          <p>Hard edge at 180 min = TravelTime API 3-hour max.</p>
+          <p>Data: GHSL GHS-POP R2023A (JRC) + TravelTime API</p>
         </div>
       </div>
     </div>

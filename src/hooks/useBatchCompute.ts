@@ -21,6 +21,7 @@ export interface BatchState {
   errors: number;
   total: number;
   avgTimeMs: number | null;
+  loadError: string | null;
 }
 
 export function useBatchCompute() {
@@ -32,6 +33,7 @@ export function useBatchCompute() {
     errors: 0,
     total: 0,
     avgTimeMs: null,
+    loadError: null,
   });
 
   const pauseRef = useRef(false);
@@ -39,6 +41,9 @@ export function useBatchCompute() {
 
   const loadOrigins = useCallback(async () => {
     const res = await fetch("/api/travel-time/origins");
+    if (!res.ok) {
+      throw new Error(`Failed to load origins (HTTP ${res.status})`);
+    }
     const data = await res.json();
     const origins: OriginStatus[] = data.origins.map(
       (o: OriginStatus & { computed: boolean }) => ({
@@ -58,23 +63,34 @@ export function useBatchCompute() {
       origins,
       total: origins.length,
       completed,
+      errors: 0,
+      loadError: null,
     }));
     return origins;
   }, []);
 
   const start = useCallback(async (limit?: number) => {
     pauseRef.current = false;
-    const origins = await loadOrigins();
+    let origins: OriginStatus[];
+    try {
+      origins = await loadOrigins();
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        loadError: err instanceof Error ? err.message : "Failed to load origins",
+      }));
+      return;
+    }
 
     setState((s) => ({ ...s, status: "running" }));
 
-    let pending = origins.filter((o) => o.status !== "done");
-    if (limit !== undefined && limit > 0) {
-      pending = pending.slice(0, limit);
-    }
+    const allPending = origins.filter((o) => o.status !== "done");
+    const batch = limit !== undefined && limit > 0
+      ? allPending.slice(0, limit)
+      : allPending;
     const times: number[] = [];
 
-    for (const origin of pending) {
+    for (const origin of batch) {
       if (pauseRef.current) {
         setState((s) => ({ ...s, status: "paused", current: null }));
         return;
@@ -154,7 +170,17 @@ export function useBatchCompute() {
       }
     }
 
-    setState((s) => ({ ...s, status: "done", current: null }));
+    // Only "done" if all origins are complete — otherwise "paused" (batch slice finished)
+    setState((s) => {
+      const stillPending = s.origins.some(
+        (o) => o.status === "pending" || o.status === "computing"
+      );
+      return {
+        ...s,
+        status: stillPending ? "paused" : "done",
+        current: null,
+      };
+    });
   }, [loadOrigins]);
 
   const pause = useCallback(() => {
@@ -163,6 +189,7 @@ export function useBatchCompute() {
   }, []);
 
   const retryErrors = useCallback(async () => {
+    // Reset error origins to pending, then start without limit
     setState((s) => ({
       ...s,
       errors: 0,
@@ -170,7 +197,8 @@ export function useBatchCompute() {
         o.status === "error" ? { ...o, status: "pending" as const, error: undefined } : o
       ),
     }));
-    // Start will pick up pending origins
+    // Note: start() calls loadOrigins() which re-checks disk.
+    // Origins that errored but have no file will still be pending.
     await start();
   }, [start]);
 

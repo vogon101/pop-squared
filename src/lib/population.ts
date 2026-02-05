@@ -15,16 +15,25 @@ async function getImage(): Promise<GeoTIFFImage> {
   if (cachedImage) return cachedImage;
 
   const remoteUrl = process.env.GEOTIFF_URL;
-  if (remoteUrl) {
-    // Remote: HTTP range requests against R2/S3/any URL
-    cachedTiff = await fromUrl(remoteUrl);
-  } else {
-    // Local: read from data/ directory
-    const tifPath = path.join(process.cwd(), "data", TIFF_FILENAME);
-    cachedTiff = await fromFile(tifPath);
+  try {
+    if (remoteUrl) {
+      cachedTiff = await fromUrl(remoteUrl);
+    } else {
+      const tifPath = path.join(process.cwd(), "data", TIFF_FILENAME);
+      cachedTiff = await fromFile(tifPath);
+    }
+    cachedImage = await cachedTiff.getImage();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    if (remoteUrl) {
+      throw new Error(
+        `Could not load population data from remote URL. Check that GEOTIFF_URL is correct. (${detail})`
+      );
+    }
+    throw new Error(
+      `Population data file not found. Run "bash scripts/download-data.sh" to download it, or set GEOTIFF_URL for remote access. (${detail})`
+    );
   }
-
-  cachedImage = await cachedTiff.getImage();
   return cachedImage;
 }
 

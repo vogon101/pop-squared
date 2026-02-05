@@ -31,7 +31,9 @@ export default function ComputeDashboard() {
   const [limit, setLimit] = useState<number | "">(5);
 
   useEffect(() => {
-    loadOrigins();
+    loadOrigins().catch(() => {
+      // Error is captured in state.loadError by the hook
+    });
   }, [loadOrigins]);
 
   const pendingCount = state.origins.filter((o) => o.status !== "done").length;
@@ -43,6 +45,18 @@ export default function ComputeDashboard() {
       : null;
 
   const progressPct = state.total > 0 ? (state.completed / state.total) * 100 : 0;
+
+  if (state.loadError) {
+    return (
+      <div className="rounded-lg bg-red-50 border border-red-200 p-4 space-y-2">
+        <p className="text-sm font-medium text-red-800">Unable to load origins</p>
+        <p className="text-xs text-red-600">{state.loadError}</p>
+        <p className="text-xs text-gray-500">
+          Check that the server is running and the population data is available.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -81,7 +95,7 @@ export default function ComputeDashboard() {
               disabled={pendingCount === 0}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {state.status === "idle" ? "Start" : state.status === "paused" ? "Resume" : "Restart"}
+              {state.status === "idle" ? "Start" : pendingCount > 0 ? "Continue" : "Restart"}
               {effectiveLimit > 0 && effectiveLimit < pendingCount
                 ? ` (${effectiveLimit})`
                 : ""}

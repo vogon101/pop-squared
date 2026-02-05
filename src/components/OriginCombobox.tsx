@@ -211,12 +211,13 @@ export default function OriginCombobox({ origins, value, onChange }: OriginCombo
             </span>
             <span className="flex-1 truncate text-gray-900">{selected.name}</span>
             <span className="text-xs text-gray-400">{selected.country}</span>
-            <button
+            <span
+              role="button"
               onClick={handleClear}
-              className="shrink-0 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+              className="shrink-0 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer"
             >
               <XIcon className="w-3.5 h-3.5" />
-            </button>
+            </span>
           </>
         ) : (
           <>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { TransportMode } from "@/lib/travel-time-types";
 import type { TimeBand } from "@/lib/travel-time-types";
 import OriginCombobox from "./OriginCombobox";
@@ -45,6 +46,52 @@ function formatNumber(n: number): string {
 
 function formatExp(n: number): string {
   return n === Math.round(n) ? String(n) : n.toFixed(1);
+}
+
+const DEFAULT_MAX_TIME = 120;
+const UNLIMITED_MAX_TIME = 180;
+
+function MaxTimeSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [maxCap, setMaxCap] = useState(DEFAULT_MAX_TIME);
+  const unlimited = maxCap === UNLIMITED_MAX_TIME;
+
+  const toggleLimit = () => {
+    if (unlimited) {
+      setMaxCap(DEFAULT_MAX_TIME);
+      if (value > DEFAULT_MAX_TIME) onChange(DEFAULT_MAX_TIME);
+    } else {
+      setMaxCap(UNLIMITED_MAX_TIME);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <label className="text-sm font-medium text-gray-700">
+          Max travel time: {value} min
+        </label>
+        <button
+          onClick={toggleLimit}
+          className="text-xs text-blue-600 hover:text-blue-800"
+        >
+          {unlimited ? `Cap at ${DEFAULT_MAX_TIME} min` : "Remove limit"}
+        </button>
+      </div>
+      <input
+        type="range"
+        min={15}
+        max={maxCap}
+        step={5}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-blue-600"
+      />
+      <div className="flex justify-between text-xs text-gray-400">
+        <span>15 min</span>
+        <span>{maxCap} min</span>
+      </div>
+    </div>
+  );
 }
 
 export default function TravelTimeExplorer({
@@ -115,24 +162,7 @@ export default function TravelTimeExplorer({
       </div>
 
       {/* Max Time Slider */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">
-          Max travel time: {maxTimeMin} min
-        </label>
-        <input
-          type="range"
-          min={15}
-          max={180}
-          step={5}
-          value={maxTimeMin}
-          onChange={(e) => onMaxTimeChange(Number(e.target.value))}
-          className="w-full accent-blue-600"
-        />
-        <div className="flex justify-between text-xs text-gray-400">
-          <span>15 min</span>
-          <span>180 min</span>
-        </div>
-      </div>
+      <MaxTimeSlider value={maxTimeMin} onChange={onMaxTimeChange} />
 
       {/* Color By Toggle */}
       <div>
