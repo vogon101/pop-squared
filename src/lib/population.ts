@@ -1,0 +1,147 @@
+import { fromFile, GeoTIFF, GeoTIFFImage } from "geotiff";
+import path from "path";
+import { haversineDistance, boundingBox } from "./geo";
+import { generateRingBoundaries } from "./rings";
+import type { PopulationQuery, PopulationResult, RingResult } from "./types";
+
+const MIN_DISTANCE_KM = 0.1; // Clamp for inverse-square (100m)
+
+let cachedTiff: GeoTIFF | null = null;
+let cachedImage: GeoTIFFImage | null = null;
+
+async function getImage(): Promise<GeoTIFFImage> {
+  if (cachedImage) return cachedImage;
+
+  const tifPath = path.join(
+    process.cwd(),
+    "data",
+    "GHS_POP_E2025_GLOBE_R2023A_4326_30ss_V1_0.tif"
+  );
+  cachedTiff = await fromFile(tifPath);
+  cachedImage = await cachedTiff.getImage();
+  return cachedImage;
+}
+
+export async function computePopulation(
+  query: PopulationQuery
+): Promise<PopulationResult> {
+  const startTime = performance.now();
+  const { lat, lng, radiusKm } = query;
+
+  const image = await getImage();
+  const [originX, originY] = image.getOrigin();
+  const [resX, resY] = image.getResolution();
+  const width = image.getWidth();
+  const height = image.getHeight();
+
+  // Bounding box in geographic coords
+  const [minLng, minLat, maxLng, maxLat] = boundingBox(lat, lng, radiusKm);
+
+  // Convert to pixel coordinates
+  const col0 = Math.max(0, Math.floor((minLng - originX) / resX));
+  const col1 = Math.min(width - 1, Math.ceil((maxLng - originX) / resX));
+  const row0 = Math.max(0, Math.floor((maxLat - originY) / resY)); // resY is negative
+  const row1 = Math.min(height - 1, Math.ceil((minLat - originY) / resY));
+
+  // Read the window of raster data
+  const rasterData = await image.readRasters({
+    window: [col0, row0, col1 + 1, row1 + 1],
+  });
+  const data = rasterData[0] as Float32Array | Float64Array;
+  const readWidth = col1 - col0 + 1;
+
+  // Generate ring boundaries
+  const ringBounds = generateRingBoundaries(radiusKm);
+
+  // Initialize ring accumulators
+  const ringCount = ringBounds.length - 1;
+  const ringPop = new Float64Array(ringCount);
+  const ringInvSq = new Float64Array(ringCount);
+  const ringArea = new Float64Array(ringCount);
+  let totalPop = 0;
+  let inverseSqSum = 0;
+  let inverseSqWeightSum = 0;
+  let pixelsProcessed = 0;
+
+  const pixelSizeDeg = Math.abs(resX);
+
+  // Iterate over pixels in the window
+  for (let row = row0; row <= row1; row++) {
+    const pixelLat = originY + (row + 0.5) * resY;
+    for (let col = col0; col <= col1; col++) {
+      const pixelLng = originX + (col + 0.5) * resX;
+
+      const dist = haversineDistance(lat, lng, pixelLat, pixelLng);
+      if (dist > radiusKm) continue;
+
+      const idx = (row - row0) * readWidth + (col - col0);
+      const pop = data[idx];
+
+      // Skip nodata (negative values or NaN)
+      if (pop < 0 || isNaN(pop)) continue;
+
+      pixelsProcessed++;
+      totalPop += pop;
+
+      // Find which ring this pixel belongs to
+      let ringIdx = -1;
+      for (let r = 0; r < ringCount; r++) {
+        if (dist >= ringBounds[r] && dist < ringBounds[r + 1]) {
+          ringIdx = r;
+          break;
+        }
+      }
+      // Edge case: pixel exactly at outer boundary
+      if (ringIdx === -1 && dist <= radiusKm) {
+        ringIdx = ringCount - 1;
+      }
+
+      if (ringIdx >= 0) {
+        ringPop[ringIdx] += pop;
+
+        const r = Math.max(dist, MIN_DISTANCE_KM);
+        const weight = 1 / (r * r);
+        ringInvSq[ringIdx] += pop * weight;
+        inverseSqSum += pop * weight;
+        inverseSqWeightSum += weight;
+
+        // Approximate pixel area
+        const cosLat = Math.cos((pixelLat * Math.PI) / 180);
+        const areaKm2 =
+          pixelSizeDeg *
+          (Math.PI / 180) *
+          6371 *
+          (pixelSizeDeg * (Math.PI / 180) * 6371 * cosLat);
+        ringArea[ringIdx] += areaKm2;
+      }
+    }
+  }
+
+  // Build ring results
+  const rings: RingResult[] = [];
+  for (let r = 0; r < ringCount; r++) {
+    const area = ringArea[r] || 1;
+    rings.push({
+      innerKm: ringBounds[r],
+      outerKm: ringBounds[r + 1],
+      population: Math.round(ringPop[r]),
+      inverseSqContribution: Math.round(ringInvSq[r] * 100) / 100,
+      areaSqKm: Math.round(area * 10) / 10,
+      density: Math.round(ringPop[r] / area),
+    });
+  }
+
+  return {
+    totalPopulation: Math.round(totalPop),
+    inverseSqSum: Math.round(inverseSqSum * 100) / 100,
+    inverseSqNormalized:
+      inverseSqWeightSum > 0
+        ? Math.round((inverseSqSum / inverseSqWeightSum) * 100) / 100
+        : 0,
+    rings,
+    pixelsProcessed,
+    computeTimeMs: Math.round(performance.now() - startTime),
+    center: { lat, lng },
+    radiusKm,
+  };
+}
