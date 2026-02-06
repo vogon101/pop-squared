@@ -7,6 +7,7 @@ import type {
   TransportMode,
   TimeBand,
 } from "@/lib/travel-time-types";
+import { haversineDistance } from "@/lib/geo";
 
 interface ComputedResults {
   totalReachable: number;
@@ -15,6 +16,12 @@ interface ComputedResults {
   normalized: number;
   timeBands: TimeBand[];
   cells: (TravelTimeCell & { time: number; weight: number })[];
+  /** % of all reachable cells that have transit data */
+  transitCoveragePct: number;
+  /** % of all reachable cells that have driving data */
+  drivingCoveragePct: number;
+  /** % of cells within 50km that have transit data (urban core quality) */
+  transitNearPct: number;
 }
 
 interface UseTravelTimeDataReturn {
@@ -137,6 +144,23 @@ export function useTravelTimeData(
       }
     }
 
+    // Coverage stats from raw data (independent of mode/time filter)
+    const totalCells = data.cells.length;
+    let transitCells = 0;
+    let drivingCells = 0;
+    let nearTotal = 0;
+    let nearTransit = 0;
+    const oLat = data.origin.lat;
+    const oLng = data.origin.lng;
+    for (const c of data.cells) {
+      if (c.transit !== null) transitCells++;
+      if (c.driving !== null) drivingCells++;
+      if (haversineDistance(oLat, oLng, c.lat, c.lng) < 50) {
+        nearTotal++;
+        if (c.transit !== null) nearTransit++;
+      }
+    }
+
     return {
       totalReachable: filteredCells.length,
       totalPopulation,
@@ -144,6 +168,9 @@ export function useTravelTimeData(
       normalized: weightSum > 0 ? Math.round((rawSum / weightSum) * 100) / 100 : 0,
       timeBands,
       cells: filteredCells,
+      transitCoveragePct: totalCells > 0 ? Math.round((transitCells / totalCells) * 1000) / 10 : 0,
+      drivingCoveragePct: totalCells > 0 ? Math.round((drivingCells / totalCells) * 1000) / 10 : 0,
+      transitNearPct: nearTotal > 0 ? Math.round((nearTransit / nearTotal) * 1000) / 10 : 0,
     };
   }, [data, mode, exponent, maxTimeMin]);
 

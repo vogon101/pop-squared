@@ -1,37 +1,5 @@
-import { fromFile, fromUrl, GeoTIFF, GeoTIFFImage } from "geotiff";
-import path from "path";
+import { getImage, readRastersExclusive } from "./geotiff-reader";
 import { boundingBox } from "./geo";
-
-const TIFF_FILENAME = "GHS_POP_E2025_GLOBE_R2023A_4326_30ss_V1_0.tif";
-
-let cachedTiff: GeoTIFF | null = null;
-let cachedImage: GeoTIFFImage | null = null;
-
-async function getImage(): Promise<GeoTIFFImage> {
-  if (cachedImage) return cachedImage;
-
-  const remoteUrl = process.env.GEOTIFF_URL;
-  try {
-    if (remoteUrl) {
-      cachedTiff = await fromUrl(remoteUrl);
-    } else {
-      const tifPath = path.join(process.cwd(), "data", TIFF_FILENAME);
-      cachedTiff = await fromFile(tifPath);
-    }
-    cachedImage = await cachedTiff.getImage();
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    if (remoteUrl) {
-      throw new Error(
-        `Could not load population data from remote URL. Check that GEOTIFF_URL is correct. (${detail})`
-      );
-    }
-    throw new Error(
-      `Population data file not found. Run "bash scripts/download-data.sh" to download it, or set GEOTIFF_URL for remote access. (${detail})`
-    );
-  }
-  return cachedImage;
-}
 
 export interface GridCell {
   lat: number;
@@ -62,10 +30,7 @@ export async function extractPopulatedCells(
   const row0 = Math.max(0, Math.floor((maxLat - originY) / resY)); // resY is negative
   const row1 = Math.min(height - 1, Math.ceil((minLat - originY) / resY));
 
-  const rasterData = await image.readRasters({
-    window: [col0, row0, col1 + 1, row1 + 1],
-  });
-  const data = rasterData[0] as Float32Array | Float64Array;
+  const data = await readRastersExclusive(image, [col0, row0, col1 + 1, row1 + 1]);
   const readWidth = col1 - col0 + 1;
 
   const cells: GridCell[] = [];

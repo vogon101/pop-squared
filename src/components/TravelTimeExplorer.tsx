@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { TransportMode } from "@/lib/travel-time-types";
 import type { TimeBand } from "@/lib/travel-time-types";
 import OriginCombobox from "./OriginCombobox";
 import Tooltip from "./Tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Origin {
   id: string;
@@ -20,6 +29,9 @@ interface Results {
   rawSum: number;
   normalized: number;
   timeBands: TimeBand[];
+  transitCoveragePct: number;
+  drivingCoveragePct: number;
+  transitNearPct: number;
 }
 
 interface TravelTimeExplorerProps {
@@ -112,6 +124,26 @@ export default function TravelTimeExplorer({
   error,
 }: TravelTimeExplorerProps) {
   const [tableView, setTableView] = useState<"cumulative" | "per-band">("cumulative");
+
+  // Track which origins the user has dismissed the low-data dialog for
+  const [dismissedOrigins, setDismissedOrigins] = useState<Set<string>>(new Set());
+  const prevOriginRef = useRef(selectedOrigin);
+
+  // Reset dismissed state when origin changes
+  useEffect(() => {
+    if (selectedOrigin !== prevOriginRef.current) {
+      prevOriginRef.current = selectedOrigin;
+    }
+  }, [selectedOrigin]);
+
+  const showLowDataDialog =
+    results &&
+    !loading &&
+    (mode === "transit" || mode === "fastest") &&
+    results.transitNearPct < 5 &&
+    selectedOrigin !== null &&
+    !dismissedOrigins.has(selectedOrigin);
+
   return (
     <div className="space-y-5">
       {/* Origin Selector */}
@@ -205,6 +237,66 @@ export default function TravelTimeExplorer({
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-4">
           <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* Near-zero transit data: popup dialog */}
+      <AlertDialog
+        open={!!showLowDataDialog}
+        onOpenChange={(open) => {
+          if (!open && selectedOrigin) {
+            setDismissedOrigins((prev) => new Set(prev).add(selectedOrigin));
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Transit data unavailable</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Transit data covers only <strong>{results?.transitNearPct}%</strong> of
+                  cells within 50km of this origin ({results?.transitCoveragePct}% overall).
+                  This is too sparse to be meaningful.
+                </p>
+                <p>
+                  The TravelTime API relies on published GTFS feeds. Some regions — including
+                  parts of Southern Europe, many US cities, and most of Asia — have very
+                  limited feed coverage. This doesn&apos;t mean transit is bad here, just that
+                  the data source can&apos;t see it.
+                </p>
+                <p>
+                  Results in transit or fastest mode will effectively only reflect driving
+                  times for this origin. Switch to <strong>Driving</strong> mode for reliable results.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>Understood</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Inline transit coverage warning (moderate cases) */}
+      {results && !loading && (mode === "transit" || mode === "fastest") && results.transitNearPct >= 5 && (
+        <div className={`rounded-lg p-3 space-y-1 ${
+          results.transitNearPct >= 80
+            ? "bg-amber-50 border border-amber-200"
+            : "bg-red-50 border border-red-200"
+        }`}>
+          <p className={`text-xs font-medium ${
+            results.transitNearPct >= 80 ? "text-amber-800" : "text-red-800"
+          }`}>
+            Transit data: {results.transitNearPct}% within 50km, {results.transitCoveragePct}% overall
+          </p>
+          <p className={`text-xs ${
+            results.transitNearPct >= 80 ? "text-amber-700" : "text-red-700"
+          }`}>
+            {results.transitNearPct >= 80
+              ? "Urban transit data looks good. Overall coverage is lower because the 200km search radius extends well beyond the transit network — this is normal."
+              : "Transit data may be incomplete for this region. The TravelTime API relies on published GTFS feeds, which have limited coverage in parts of Southern/Eastern Europe, the US, and Asia. Results may understate true transit accessibility."}
+          </p>
         </div>
       )}
 

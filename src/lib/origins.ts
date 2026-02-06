@@ -7,24 +7,6 @@ export interface Origin {
   country: string;  // ISO 3166-1 alpha-2
 }
 
-// Maps country codes to TravelTime proto country codes
-const COUNTRY_TO_PROTO: Record<string, string> = {
-  GB: "uk", UK: "uk",
-  US: "us", CA: "ca", MX: "mx",
-  FR: "fr", DE: "de", IT: "it", ES: "es", PT: "pt",
-  NL: "nl", BE: "be", AT: "at", CH: "ch",
-  SE: "se", NO: "no", DK: "dk", FI: "fi",
-  PL: "pl", RO: "ro", HU: "hu", GR: "gr",
-  IE: "ie", LV: "lv", LT: "lt", SI: "si",
-  RS: "rs", AU: "au", NZ: "nz", JP: "jp",
-  IN: "in", SG: "sg", PH: "ph", ID: "id",
-  ZA: "za", SA: "sa",
-};
-
-export function getProtoCountry(countryCode: string): string | null {
-  return COUNTRY_TO_PROTO[countryCode] ?? null;
-}
-
 export const ORIGINS: Origin[] = [
   // ── Top EU Cities ──
   { id: "london", name: "London", lat: 51.5074, lng: -0.1278, type: "city", country: "GB" },

@@ -29,6 +29,9 @@ interface TravelTimeResults {
   rawSum: number;
   normalized: number;
   timeBands: TimeBand[];
+  transitCoveragePct: number;
+  drivingCoveragePct: number;
+  transitNearPct: number;
 }
 
 interface UnifiedSidebarProps {
@@ -347,6 +350,64 @@ function SingleContent(props: UnifiedSidebarProps & { isDistance: boolean }) {
   );
 }
 
+// ---------- Transit data quality warning for compare mode ----------
+
+function TransitCoverageWarning({
+  mode,
+  resultsA,
+  resultsB,
+  nameA,
+  nameB,
+}: {
+  mode: TransportMode;
+  resultsA: TravelTimeResults | null;
+  resultsB: TravelTimeResults | null;
+  nameA: string;
+  nameB: string;
+}) {
+  if (mode !== "transit" && mode !== "fastest") return null;
+
+  const lowA = resultsA && resultsA.transitNearPct < 80;
+  const lowB = resultsB && resultsB.transitNearPct < 80;
+  if (!lowA && !lowB) return null;
+
+  const veryLowA = resultsA && resultsA.transitNearPct < 5;
+  const veryLowB = resultsB && resultsB.transitNearPct < 5;
+
+  const lines: string[] = [];
+  if (veryLowA) {
+    lines.push(`${nameA}: transit data essentially unavailable (${resultsA!.transitNearPct}% within 50km)`);
+  } else if (lowA) {
+    lines.push(`${nameA}: limited transit data (${resultsA!.transitNearPct}% within 50km)`);
+  }
+  if (veryLowB) {
+    lines.push(`${nameB}: transit data essentially unavailable (${resultsB!.transitNearPct}% within 50km)`);
+  } else if (lowB) {
+    lines.push(`${nameB}: limited transit data (${resultsB!.transitNearPct}% within 50km)`);
+  }
+
+  const hasVeryLow = veryLowA || veryLowB;
+
+  return (
+    <div className={`mt-3 rounded-lg p-3 space-y-1 ${
+      hasVeryLow ? "bg-red-50 border border-red-200" : "bg-amber-50 border border-amber-200"
+    }`}>
+      <p className={`text-xs font-medium ${hasVeryLow ? "text-red-800" : "text-amber-800"}`}>
+        Data quality warning
+      </p>
+      {lines.map((line, i) => (
+        <p key={i} className={`text-xs ${hasVeryLow ? "text-red-700" : "text-amber-700"}`}>
+          {line}
+        </p>
+      ))}
+      <p className={`text-xs ${hasVeryLow ? "text-red-600" : "text-amber-600"}`}>
+        Transit coverage depends on GTFS feeds — comparisons between origins with
+        different coverage levels may not be fair.
+      </p>
+    </div>
+  );
+}
+
 // ---------- Compare mode ----------
 
 function CompareContent(props: UnifiedSidebarProps & { isDistance: boolean }) {
@@ -408,19 +469,28 @@ function CompareContent(props: UnifiedSidebarProps & { isDistance: boolean }) {
             />
           </div>
         ) : (
-          <TimeControls
-            origins={props.origins}
-            originA={props.originA}
-            onOriginAChange={props.onOriginAChange}
-            originB={props.originB}
-            onOriginBChange={props.onOriginBChange}
-            transportMode={props.transportMode}
-            onTransportModeChange={props.onTransportModeChange}
-            exponent={props.exponentTime}
-            onExponentChange={props.onExponentTimeChange}
-            maxTimeMin={props.maxTimeMin}
-            onMaxTimeChange={props.onMaxTimeChange}
-          />
+          <>
+            <TimeControls
+              origins={props.origins}
+              originA={props.originA}
+              onOriginAChange={props.onOriginAChange}
+              originB={props.originB}
+              onOriginBChange={props.onOriginBChange}
+              transportMode={props.transportMode}
+              onTransportModeChange={props.onTransportModeChange}
+              exponent={props.exponentTime}
+              onExponentChange={props.onExponentTimeChange}
+              maxTimeMin={props.maxTimeMin}
+              onMaxTimeChange={props.onMaxTimeChange}
+            />
+            <TransitCoverageWarning
+              mode={props.transportMode}
+              resultsA={props.timeResultsA}
+              resultsB={props.timeResultsB}
+              nameA={nameA}
+              nameB={nameB}
+            />
+          </>
         )}
       </div>
 
